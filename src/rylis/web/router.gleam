@@ -1,7 +1,6 @@
 import gleam/dynamic
 import gleam/http
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/result
 import gleam/string
@@ -37,10 +36,16 @@ fn home_handler(req: wisp.Request) {
 
   let html =
     components.layout([
-      html.p_text(
-        [],
-        "Finds the lowest tags where changes from all of the tasks are present",
-      ),
+      html.p([], [
+        html.Text(
+          "Finds the lowest tags where changes from all of the issues are present. Code available at ",
+        ),
+        html.a_text(
+          [attr.href("https://github.com/krystofrezac/rylis")],
+          "Github",
+        ),
+        html.Text("."),
+      ]),
       html.div([attr.id("content")], [content]),
     ])
     |> nakai.to_string_builder
