@@ -1,0 +1,23 @@
+version: '3'
+
+interval: 1s
+
+tasks:
+  dev:
+    cmds:
+      # Sometimes the `dev:watch` doesn't run when no file changed. This deletes stored checksums.
+      # https://github.com/go-task/task/issues/59
+      - rm -rf .task 
+      - gleam run -m tailwind/install
+      - task dev:watch
+
+  dev:watch:
+    cmds:
+      # Previous process is not cancelled so we need to do it manually.
+      # https://github.com/go-task/task/issues/160
+      - pkill beam || true 
+      - gleam run -m tailwind/run 
+      - DEV=true gleam run
+    watch: true
+    sources:
+      - 'src/**/*.{gleam,css}'

@@ -35,19 +35,7 @@ fn home_handler(req: wisp.Request) {
     |> get_content()
 
   let html =
-    components.layout([
-      html.p([], [
-        html.Text(
-          "Finds the lowest tags where changes from all of the issues are present. Code available at ",
-        ),
-        html.a_text(
-          [attr.href("https://github.com/krystofrezac/rylis")],
-          "Github",
-        ),
-        html.Text("."),
-      ]),
-      html.div([attr.id("content")], [content]),
-    ])
+    components.layout([html.div([attr.id("content")], [content])])
     |> nakai.to_string_builder
 
   wisp.ok()
@@ -129,8 +117,7 @@ fn resolve_tags_for_tasks_handler(req: wisp.Request) {
         )
 
       let content = case min_tags_result {
-        Error(err) ->
-          html.div([], [html.p_text([], "Error occured"), html.p_text([], err)])
+        Error(err) -> components.error_alert("Error occured", err)
         Ok(min_tags) -> {
           let mapped_repositories =
             list.map(min_tags, fn(repository) {
@@ -163,69 +150,87 @@ fn format_semantic_version(version: tag_resolver.SemanticVersion) {
 fn get_content(logged_in: Bool) {
   case logged_in {
     False ->
-      html.div([], [
-        html.p_text(
-          [],
-          "Please fill in credentials to use the application. Don't worry, all of the information is stored only in your browser using secured cookies.",
-        ),
-        html.form(
-          [
-            attr.Attr("hx-post", "/login"),
-            attr.Attr("hx-target", "#content"),
-            attr.Attr("hx-ext", "json-enc"),
-          ],
-          [
-            html.input([
-              attr.placeholder("jira email"),
-              attr.name("jira_email"),
-              attr.required("true"),
-              attr.type_("email"),
-            ]),
-            html.input([
-              attr.placeholder("jira token"),
-              attr.name("jira_token"),
-              attr.required("true"),
-              attr.type_("password"),
-            ]),
-            html.input([
-              attr.placeholder("gitlab token"),
-              attr.name("gitlab_token"),
-              attr.required("true"),
-              attr.type_("password"),
-            ]),
-            html.p([], [
-              html.Text(""),
-              html.a(
-                [
-                  attr.href(
-                    "https://id.atlassian.com/manage-profile/security/api-tokens",
+      html.div([attr.class("mt-8 flex justify-center")], [
+        html.div([attr.class("max-w-sm")], [
+          components.h2_text(
+            [attr.class("text-center font-medium")],
+            "Fill in credentials first",
+          ),
+          html.p_text(
+            [attr.class("mb-4 text-center")],
+            "Don't worry, all of the information is stored only in your browser using secured cookies.",
+          ),
+          html.form(
+            [
+              attr.Attr("hx-post", "/login"),
+              attr.Attr("hx-target", "#content"),
+              attr.Attr("hx-ext", "json-enc"),
+            ],
+            [
+              html.div([attr.class("flex flex-col gap-2")], [
+                components.field(
+                  "Jira email",
+                  components.input([
+                    attr.name("jira_email"),
+                    attr.required("true"),
+                    attr.type_("email"),
+                  ]),
+                ),
+                components.field(
+                  "Jira token",
+                  components.input([
+                    attr.name("jira_token"),
+                    attr.required("true"),
+                    attr.type_("password"),
+                  ]),
+                ),
+                components.field(
+                  "Gitlab token",
+                  components.input([
+                    attr.name("gitlab_token"),
+                    attr.required("true"),
+                    attr.type_("password"),
+                  ]),
+                ),
+                html.p([], [
+                  components.link(
+                    [
+                      attr.href(
+                        "https://id.atlassian.com/manage-profile/security/api-tokens",
+                      ),
+                      attr.target("_blank"),
+                    ],
+                    [html.Text("Get jira token")],
                   ),
-                  attr.target("_blank"),
-                ],
-                [html.Text("Get jira token")],
-              ),
-            ]),
-            html.p_text(
-              [],
-              "Get gitlab token at `<your-gitlab-url>/-/user_settings/personal_access_tokens` (read_api scope is enough)",
-            ),
-            html.button_text([], "Log in"),
-          ],
-        ),
+                ]),
+                html.p([], [
+                  html.Text("Get gitlab token at"),
+                  components.code_text(
+                    [],
+                    "<your-gitlab-url>/-/user_settings/personal_access_tokens",
+                  ),
+                  html.Text(" (read_api scope is enough)"),
+                ]),
+                components.button_text([attr.class("w-full")], "Log in"),
+              ]),
+            ],
+          ),
+        ]),
       ])
     True ->
       html.Fragment([
-        html.div([], [
+        html.div([attr.class("flex items-center")], [
           html.Text("You are logged in"),
-          html.button_text(
+          components.button_text(
             [
+              attr.class("ml-2"),
               attr.Attr("hx-post", "/logout"),
               attr.Attr("hx-target", "#content"),
             ],
             "Log out",
           ),
         ]),
-        html.div([attr.id("form-or-result")], [
+        html.div([attr.id("form-or-result"), attr.class("mt-4")], [
           html.form(
             [
               attr.Attr("hx-post", "/resolve-tags-for-issues"),
@@ -233,17 +238,21 @@ fn get_content(logged_in: Bool) {
               attr.Attr("hx-ext", "json-enc"),
             ],
             [
-              html.textarea(
-                [
-                  attr.name("tasks"),
-                  attr.placeholder(
-                    "Jira issue urls. Put each issue on separate line",
-                  ),
-                  attr.style("width: 100%;"),
-                ],
-                [],
-              ),
-              html.button_text([], "Find tags"),
+              html.div([attr.class("flex min-h-80")], [
+                components.textarea(
+                  [
+                    attr.class("grow"),
+                    attr.name("tasks"),
+                    attr.placeholder(
+                      "Jira issue urls. Put each issue on separate line",
+                    ),
+                  ],
+                  [],
+                ),
+              ]),
+              html.div([attr.class("mt-2 flex justify-end")], [
+                components.button_text([], "Find tags"),
+              ]),
             ],
           ),
         ]),

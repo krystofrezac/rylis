@@ -12,4 +12,5 @@ Tool for planning/checking releases
 
 ## Local development
 - [Setup gleam](https://gleam.run/getting-started/installing/)
-- run `DEV=true gleam run`
+- [Install task](https://taskfile.dev/installation/)
+- run `task dev`

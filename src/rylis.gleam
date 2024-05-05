@@ -14,9 +14,11 @@ pub fn main() {
     env.get_bool("DEV")
     |> result.replace_error(False)
     |> result.unwrap_both
+
   case dev {
     True -> {
       let assert Ok(_) = dotenv.load_from(".env.dev")
+
       Nil
     }
     False -> Nil
