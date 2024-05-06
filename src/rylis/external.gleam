@@ -2,6 +2,10 @@ pub type Ticket {
   Ticket(base_url: String, key: String)
 }
 
+pub type TicketWithId {
+  TicketWithId(base_url: String, key: String, id: String)
+}
+
 pub type MergeRequest {
   MergeRequest(base_url: String, project: String, id: String)
 }

@@ -3,6 +3,81 @@ import gleeunit/should
 import rylis/external
 import rylis/services/tag_resolver
 
+pub fn get_min_tags_by_repository() {
+  let unique_repositories_input = [
+    // project a
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "a", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestMerged(
+        Ok(tag_resolver.SemanticVersion(1, 2, 0)),
+      ),
+    ),
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "a", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestMerged(
+        Ok(tag_resolver.SemanticVersion(2, 3, 2)),
+      ),
+    ),
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "a", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestMerged(
+        Ok(tag_resolver.SemanticVersion(1, 1, 9210)),
+      ),
+    ),
+    // project b
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "b", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestMerged(
+        Ok(tag_resolver.SemanticVersion(5, 5, 5)),
+      ),
+    ),
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "b", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestMerged(
+        Ok(tag_resolver.SemanticVersion(123, 345, 234)),
+      ),
+    ),
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "b", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestMerged(
+        Ok(tag_resolver.SemanticVersion(234, 123, 345)),
+      ),
+    ),
+    // project c
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "b", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestOpened(Nil),
+    ),
+    tag_resolver.MergeRequestWithTicketData(
+      merge_request: external.MergeRequest(base_url: "a", project: "b", id: ""),
+      ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+      data: external.MergeRequestMerged(Error(Nil)),
+    ),
+  ]
+
+  unique_repositories_input
+  |> tag_resolver.get_min_tags_by_repository
+  |> should.equal([
+    tag_resolver.RepositoryData(
+      base_url: "base",
+      project: "a",
+      data: tag_resolver.SemanticVersion(1, 1, 9210),
+    ),
+    tag_resolver.RepositoryData(
+      base_url: "base",
+      project: "b",
+      data: tag_resolver.SemanticVersion(5, 5, 5),
+    ),
+  ])
+}
+
 pub fn ticket_url_to_get_params_test() {
   "https://projektpb.atlassian.net/browse/KLS-1392"
   |> tag_resolver.ticket_url_to_ticket
@@ -17,60 +92,6 @@ pub fn ticket_url_to_get_params_test() {
   "https://projektpb.atlassian.net/KLS-1392"
   |> tag_resolver.ticket_url_to_ticket
   |> should.equal(Error(Nil))
-}
-
-pub fn get_min_tags_for_merge_requests_with_tags_test() {
-  let unique_repositories_input = [
-    tag_resolver.RepositoryData(base_url: "base", project: "a", data: [
-      "1.2.0", "2.3.2", "1.1.9210",
-    ]),
-    tag_resolver.RepositoryData(base_url: "base", project: "b", data: [
-      "5.5.5", "123.345.234", "234.123.345",
-    ]),
-  ]
-  unique_repositories_input
-  |> tag_resolver.get_min_tags_for_merge_requests_with_tags
-  |> should.equal([
-    tag_resolver.RepositoryData(
-      base_url: "base",
-      project: "a",
-      data: tag_resolver.SemanticVersion(1, 1, 9210),
-    ),
-    tag_resolver.RepositoryData(
-      base_url: "base",
-      project: "b",
-      data: tag_resolver.SemanticVersion(5, 5, 5),
-    ),
-  ])
-
-  let non_unique_repositories_input = [
-    tag_resolver.RepositoryData(base_url: "base", project: "a", data: [
-      "1.2.0", "2.3.2", "1.1.9210",
-    ]),
-    tag_resolver.RepositoryData(base_url: "base", project: "a", data: [
-      "0.2.3", "0.7.8", "1.1.9210",
-    ]),
-    tag_resolver.RepositoryData(base_url: "base", project: "b", data: [
-      "5.5.5", "123.345.234", "234.123.345",
-    ]),
-    tag_resolver.RepositoryData(base_url: "base", project: "b", data: [
-      "123.345.234", "234.123.345", "999.999.999",
-    ]),
-  ]
-  non_unique_repositories_input
-  |> tag_resolver.get_min_tags_for_merge_requests_with_tags
-  |> should.equal([
-    tag_resolver.RepositoryData(
-      base_url: "base",
-      project: "a",
-      data: tag_resolver.SemanticVersion(1, 1, 9210),
-    ),
-    tag_resolver.RepositoryData(
-      base_url: "base",
-      project: "b",
-      data: tag_resolver.SemanticVersion(123, 345, 234),
-    ),
-  ])
 }
 
 pub fn get_lowest_semantic_version_test() {

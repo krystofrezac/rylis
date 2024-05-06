@@ -1,5 +1,6 @@
 import gleam/dict
 import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option
 import gleam/order
@@ -8,28 +9,37 @@ import gleam/regex
 import gleam/result
 import rylis/external
 
-pub type RepositoryData(data) {
-  RepositoryData(base_url: String, project: String, data: data)
+pub type MergeRequestMinTag =
+  external.MergeRequestState(Result(SemanticVersion, Nil), Nil, Nil)
+
+pub type MergeRequestWithTicketData(data) {
+  MergeRequestWithTicketData(
+    ticket: external.TicketWithId,
+    merge_request: external.MergeRequest,
+    data: data,
+  )
 }
 
 pub type SemanticVersion {
   SemanticVersion(major: Int, minor: Int, patch: Int)
 }
 
-/// 1. From tickets get merge requests
-/// 1. Get tags where changes from merge requests are present
-/// 1. Find the **lowest** tags for these merge request (the first tag where released)
-/// 1. Group the **lowest** tags by project/repository
-/// 1. Pick the **highest** tag from these groups (first tag where all the changes from merge requests are present)
-pub fn get_min_tags_for_tickets(
+pub type RepositoryData(data) {
+  RepositoryData(base_url: String, project: String, data: data)
+}
+
+// TODO: tests
+pub fn get_merge_requests_min_tags_for_tickets(
   ticket_urls ticket_urls: List(String),
-  get_ticket_merge_requests get_ticket_merge_requests: fn(external.Ticket) ->
+  get_sub_tickets get_sub_tickets: fn(external.Ticket) ->
+    Result(List(external.TicketWithId), String),
+  get_ticket_merge_requests get_ticket_merge_requests: fn(external.TicketWithId) ->
     Result(List(external.MergeRequest), String),
   get_tags_where_merge_request get_tags_where_merge_request: fn(
     external.MergeRequest,
   ) ->
     Result(external.MergeRequestState(List(String), Nil, Nil), String),
-) {
+) -> Result(List(MergeRequestWithTicketData(MergeRequestMinTag)), String) {
   use tickets <- result.try(
     ticket_urls
     |> list.map(fn(ticket_url) {
@@ -40,49 +50,106 @@ pub fn get_min_tags_for_tickets(
     |> result.all,
   )
 
-  use merge_requests <- result.try(
+  use merge_requests_min_tags <- result.try(
     tickets
     |> list.map(fn(ticket) {
       use <- task.async
-      get_ticket_merge_requests(ticket)
+
+      use sub_tickets <- result.try(get_sub_tickets(ticket))
+      sub_tickets
+      |> list.map(fn(sub_ticket) {
+        use <- task.async
+        use merge_requests <- result.try(get_ticket_merge_requests(sub_ticket))
+
+        merge_requests
+        |> list.map(fn(merge_request) {
+          use <- task.async
+          use merge_request_tags <- result.try(get_tags_where_merge_request(
+            merge_request,
+          ))
+
+          let merge_request_min_tag = case merge_request_tags {
+            external.MergeRequestMerged(tags) ->
+              tags
+              |> get_min_tag
+              |> external.MergeRequestMerged
+            external.MergeRequestOpened(Nil) -> external.MergeRequestOpened(Nil)
+            external.MergeRequestClosed(Nil) -> external.MergeRequestClosed(Nil)
+          }
+
+          MergeRequestWithTicketData(
+            ticket: sub_ticket,
+            merge_request: merge_request,
+            data: merge_request_min_tag,
+          )
+          |> Ok
+        })
+        |> list.map(task.await(_, 60_000))
+        |> result.all
+      })
+      |> list.map(task.await(_, 60_000))
+      |> result.all
+      |> result.map(list.flatten)
     })
     |> list.map(task.await(_, 60_000))
     |> result.all
     |> result.map(list.flatten),
   )
 
-  use merge_requests_tags <- result.try(
-    merge_requests
-    |> list.map(fn(merge_request) {
-      use <- task.async
-      use tags <- result.map(get_tags_where_merge_request(merge_request))
+  merge_requests_min_tags
+  |> Ok
+}
 
-      RepositoryData(
-        base_url: merge_request.base_url,
-        project: merge_request.project,
-        data: tags,
-      )
-    })
-    |> list.map(task.await(_, 60_000))
-    |> result.all,
-  )
-
-  let merged_merge_requests_with_tags =
-    merge_requests_tags
-    |> list.filter_map(fn(merge_request_tags) {
-      case merge_request_tags {
-        RepositoryData(
-          data: external.MergeRequestMerged(tags),
-          base_url: base_url,
-          project: project,
-        ) ->
-          Ok(RepositoryData(data: tags, base_url: base_url, project: project))
+pub fn get_min_tags_by_repository(
+  merge_requests_min_tags: List(MergeRequestWithTicketData(MergeRequestMinTag)),
+) -> List(RepositoryData(SemanticVersion)) {
+  let merged_merge_request_min_tags =
+    merge_requests_min_tags
+    |> list.filter_map(fn(merge_request_min_tag) {
+      case merge_request_min_tag.data {
+        external.MergeRequestMerged(min_tag) ->
+          MergeRequestWithTicketData(
+            merge_request: merge_request_min_tag.merge_request,
+            ticket: merge_request_min_tag.ticket,
+            data: min_tag,
+          )
+          |> Ok
         _ -> Error(Nil)
       }
     })
 
-  get_min_tags_for_merge_requests_with_tags(merged_merge_requests_with_tags)
-  |> Ok
+  let grouped_repositories_with_lowest_common_tag =
+    merged_merge_request_min_tags
+    |> list.group(fn(merge_request) {
+      #(
+        merge_request.merge_request.project,
+        merge_request.merge_request.base_url,
+      )
+    })
+    |> dict.values
+    |> list.filter_map(fn(merge_requests_min_tags_for_project) {
+      // Assert because of `dict.valuse` - cannot be empty
+      let assert Ok(first_merge_request_min_tags) =
+        list.first(merge_requests_min_tags_for_project)
+
+      let lowest_tags =
+        list.filter_map(merge_requests_min_tags_for_project, fn(repository) {
+          repository.data
+        })
+
+      io.debug(#(merge_requests_min_tags_for_project, lowest_tags))
+      // Asserting because the `list.group` ensures it's non-empty -> not Error
+      use highest_tag <- result.try(get_highest_semantic_version(lowest_tags))
+
+      RepositoryData(
+        base_url: first_merge_request_min_tags.merge_request.base_url,
+        project: first_merge_request_min_tags.merge_request.project,
+        data: highest_tag,
+      )
+      |> Ok
+    })
+
+  grouped_repositories_with_lowest_common_tag
 }
 
 pub fn ticket_url_to_ticket(url: String) -> Result(external.Ticket, Nil) {
@@ -111,53 +178,9 @@ pub fn ticket_url_to_ticket(url: String) -> Result(external.Ticket, Nil) {
   external.Ticket(base_url: base_url, key: key)
 }
 
-pub fn get_min_tags_for_merge_requests_with_tags(
-  merged_merge_requests_with_tags: List(RepositoryData(List(String))),
-) {
-  let merged_merge_requests_with_lowest_tag =
-    merged_merge_requests_with_tags
-    |> list.filter_map(fn(merge_request_with_tags) {
-      use lowest_tag <- result.try(
-        list.filter_map(merge_request_with_tags.data, decode_semantic_version)
-        |> get_lowest_semantic_version,
-      )
-
-      RepositoryData(
-        base_url: merge_request_with_tags.base_url,
-        project: merge_request_with_tags.project,
-        data: lowest_tag,
-      )
-      |> Ok
-    })
-
-  let grouped_repositories_with_satisfied_tag =
-    merged_merge_requests_with_lowest_tag
-    |> list.group(fn(merge_request) {
-      RepositoryData(
-        base_url: merge_request.base_url,
-        project: merge_request.project,
-        data: Nil,
-      )
-    })
-    |> dict.to_list
-    |> list.map(fn(repository_group) {
-      let #(repository, repositories_with_lowest_tags) = repository_group
-      let lowest_tags =
-        list.map(repositories_with_lowest_tags, fn(repository) {
-          repository.data
-        })
-
-      // Asserting because the `list.group` ensures it's non-empty -> not Error
-      let assert Ok(highest_tag) = get_highest_semantic_version(lowest_tags)
-
-      highest_tag
-      |> RepositoryData(
-        base_url: repository.base_url,
-        project: repository.project,
-      )
-    })
-
-  grouped_repositories_with_satisfied_tag
+pub fn get_min_tag(tags: List(String)) {
+  list.filter_map(tags, decode_semantic_version)
+  |> get_lowest_semantic_version
 }
 
 pub fn get_lowest_semantic_version(versions: List(SemanticVersion)) {

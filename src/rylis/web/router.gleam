@@ -1,3 +1,4 @@
+import gleam/dict
 import gleam/dynamic
 import gleam/http
 import gleam/int
@@ -7,6 +8,7 @@ import gleam/string
 import nakai
 import nakai/attr
 import nakai/html
+import rylis/external
 import rylis/external/gitlab
 import rylis/external/jira
 import rylis/helpers
@@ -98,9 +100,16 @@ fn resolve_tags_for_tasks_handler(req: wisp.Request) {
         |> list.map(string.trim)
         |> list.filter(fn(row) { row != "" })
 
-      let min_tags_result =
-        tag_resolver.get_min_tags_for_tickets(
+      let merge_requests_min_tags_result =
+        tag_resolver.get_merge_requests_min_tags_for_tickets(
           ticket_urls: ticket_urls,
+          get_sub_tickets: fn(ticket) {
+            jira.get_ticket_and_sub_tickets_with_id(
+              ticket: ticket,
+              email: auth.jira_email,
+              token: auth.jira_token,
+            )
+          },
           get_ticket_merge_requests: fn(ticket) {
             jira.get_ticket_merge_requests(
               ticket: ticket,
@@ -116,19 +125,67 @@ fn resolve_tags_for_tasks_handler(req: wisp.Request) {
           },
         )
 
-      let content = case min_tags_result {
+      let content = case merge_requests_min_tags_result {
         Error(err) -> components.error_alert("Error occured", err)
-        Ok(min_tags) -> {
+        Ok(merge_requests_min_tags) -> {
           let mapped_repositories =
-            list.map(min_tags, fn(repository) {
+            tag_resolver.get_min_tags_by_repository(merge_requests_min_tags)
+            |> list.map(fn(merge_requests_min_tag) {
               html.p_text(
                 [],
-                repository.project
+                merge_requests_min_tag.project
                   <> ": "
-                  <> format_semantic_version(repository.data),
+                  <> format_semantic_version(merge_requests_min_tag.data),
               )
             })
-          html.div([], [html.p_text([], "Min versions:"), ..mapped_repositories])
+
+          let mapped_detail =
+            merge_requests_min_tags
+            |> list.group(by: fn(merge_request_min_tag) {
+              merge_request_min_tag.ticket
+            })
+            |> dict.values
+            |> list.map(fn(merge_requests_min_tags_for_ticket) {
+              // assert because of `dict.values` - it cannot be empty
+              let assert Ok(first_merge_request_min_tag) =
+                list.first(merge_requests_min_tags_for_ticket)
+
+              let mapped_merge_request =
+                merge_requests_min_tags_for_ticket
+                |> list.map(fn(merge_request_min_tag) {
+                  let min_tag = case merge_request_min_tag.data {
+                    external.MergeRequestMerged(Ok(min_tag)) ->
+                      min_tag
+                      |> format_semantic_version
+                    external.MergeRequestMerged(Error(Nil)) -> "not in any tag"
+                    external.MergeRequestOpened(Nil) -> "opened"
+                    external.MergeRequestClosed(Nil) -> "closed"
+                  }
+                  html.div([], [
+                    html.Text(
+                      merge_request_min_tag.merge_request.project
+                      <> "!"
+                      <> merge_request_min_tag.merge_request.id
+                      <> " - "
+                      <> min_tag,
+                    ),
+                  ])
+                })
+
+              html.div([attr.class("mb-4")], [
+                html.Text(first_merge_request_min_tag.ticket.key),
+                html.div([attr.class("ml-4")], mapped_merge_request),
+              ])
+            })
+
+          html.div([], [
+            html.div([], [
+              html.p_text([], "Min versions:"),
+              ..mapped_repositories
+            ]),
+            html.hr([]),
+            html.div([], [html.p_text([], "Detail:"), ..mapped_detail]),
+          ])
         }
       }
       let html = nakai.to_string_builder(content)
