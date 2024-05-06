@@ -150,11 +150,11 @@ pub fn layout(children: List(html.Node)) {
       html.div([attr.class("mt-2")], [h1_text([], "Rylís")]),
       html.p([attr.class("mb-4 text-gray-500")], [
         html.Text(
-          "Finds the lowest tags where changes from all of the issues are present. Code available at ",
+          "Finds the lowest tags where changes from all of the issues are present. Code available on ",
         ),
         link_text(
           [attr.href("https://github.com/krystofrezac/rylis")],
-          "Github",
+          "GitHub",
         ),
         html.Text("."),
       ]),
