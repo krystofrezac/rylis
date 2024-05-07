@@ -3,6 +3,36 @@ import gleeunit/should
 import rylis/external
 import rylis/services/tag_resolver
 
+pub fn get_merge_requests_min_tags_for_tickets_test() {
+  tag_resolver.get_merge_requests_min_tags_for_tickets(
+    ticket_urls: ["https://jira.com/browse/AAA-111"],
+    get_sub_tickets: fn(_ticket) {
+      [external.TicketWithId(base_url: "", id: "", key: "")]
+      |> Ok
+    },
+    get_ticket_merge_requests: fn(_ticket) {
+      [external.MergeRequest(base_url: "", project: "", id: "")]
+      |> Ok
+    },
+    get_tags_where_merge_request: fn(_merge_request) {
+      external.MergeRequestMerged(["1.2.3", "1.2.4"])
+      |> Ok
+    },
+  )
+  |> should.equal(
+    [
+      tag_resolver.MergeRequestWithTicketData(
+        merge_request: external.MergeRequest(base_url: "", project: "", id: ""),
+        ticket: external.TicketWithId(base_url: "", key: "", id: ""),
+        data: external.MergeRequestMerged(
+          Ok(tag_resolver.SemanticVersion(1, 2, 3)),
+        ),
+      ),
+    ]
+    |> Ok,
+  )
+}
+
 pub fn get_min_tags_by_repository() {
   let unique_repositories_input = [
     // project a

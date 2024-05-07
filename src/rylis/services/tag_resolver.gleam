@@ -1,6 +1,5 @@
 import gleam/dict
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option
 import gleam/order
@@ -28,7 +27,6 @@ pub type RepositoryData(data) {
   RepositoryData(base_url: String, project: String, data: data)
 }
 
-// TODO: tests
 pub fn get_merge_requests_min_tags_for_tickets(
   ticket_urls ticket_urls: List(String),
   get_sub_tickets get_sub_tickets: fn(external.Ticket) ->
@@ -137,7 +135,6 @@ pub fn get_min_tags_by_repository(
           repository.data
         })
 
-      io.debug(#(merge_requests_min_tags_for_project, lowest_tags))
       // Asserting because the `list.group` ensures it's non-empty -> not Error
       use highest_tag <- result.try(get_highest_semantic_version(lowest_tags))
 
