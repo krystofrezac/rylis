@@ -131,12 +131,30 @@ fn resolve_tags_for_tasks_handler(req: wisp.Request) {
           let mapped_repositories =
             tag_resolver.get_min_tags_by_repository(merge_requests_min_tags)
             |> list.map(fn(merge_requests_min_tag) {
-              html.p_text(
-                [],
-                merge_requests_min_tag.project
-                  <> ": "
-                  <> format_semantic_version(merge_requests_min_tag.data),
-              )
+              let version = format_semantic_version(merge_requests_min_tag.data)
+
+              let repository_url =
+                merge_requests_min_tag.base_url
+                <> "/"
+                <> merge_requests_min_tag.project
+
+              let tag_url =
+                merge_requests_min_tag.base_url
+                <> "/"
+                <> merge_requests_min_tag.project
+                <> "/-/tags/"
+                <> version
+
+              html.Fragment([
+                components.link_text(
+                  [attr.href(repository_url), attr.target("_blank")],
+                  merge_requests_min_tag.project,
+                ),
+                components.link_text(
+                  [attr.href(tag_url), attr.target("_blank")],
+                  version,
+                ),
+              ])
             })
 
           let mapped_detail =
@@ -150,41 +168,91 @@ fn resolve_tags_for_tasks_handler(req: wisp.Request) {
               let assert Ok(first_merge_request_min_tag) =
                 list.first(merge_requests_min_tags_for_ticket)
 
+              let ticket_url =
+                first_merge_request_min_tag.ticket.base_url
+                <> "/browse/"
+                <> first_merge_request_min_tag.ticket.key
+
               let mapped_merge_request =
                 merge_requests_min_tags_for_ticket
                 |> list.map(fn(merge_request_min_tag) {
-                  let min_tag = case merge_request_min_tag.data {
-                    external.MergeRequestMerged(Ok(min_tag)) ->
-                      min_tag
-                      |> format_semantic_version
-                    external.MergeRequestMerged(Error(Nil)) -> "not in any tag"
-                    external.MergeRequestOpened(Nil) -> "opened"
-                    external.MergeRequestClosed(Nil) -> "closed"
+                  let merge_request_url =
+                    merge_request_min_tag.merge_request.base_url
+                    <> "/"
+                    <> merge_request_min_tag.merge_request.project
+                    <> "/-/merge_requests/"
+                    <> merge_request_min_tag.merge_request.id
+
+                  let merge_request_text =
+                    merge_request_min_tag.merge_request.project
+                    <> "!"
+                    <> merge_request_min_tag.merge_request.id
+
+                  let min_tag_rendered = case merge_request_min_tag.data {
+                    external.MergeRequestMerged(Ok(min_tag)) -> {
+                      let min_tag_text = format_semantic_version(min_tag)
+                      let tag_url =
+                        merge_request_min_tag.merge_request.base_url
+                        <> "/"
+                        <> merge_request_min_tag.merge_request.project
+                        <> "/-/tags/"
+                        <> min_tag_text
+
+                      components.link_text(
+                        [attr.href(tag_url), attr.target("_blank")],
+                        min_tag_text,
+                      )
+                    }
+                    external.MergeRequestMerged(Error(Nil)) ->
+                      html.Text("not in any tag")
+                    external.MergeRequestOpened(Nil) -> html.Text("opened")
+                    external.MergeRequestClosed(Nil) -> html.Text("closed")
                   }
-                  html.div([], [
-                    html.Text(
-                      merge_request_min_tag.merge_request.project
-                      <> "!"
-                      <> merge_request_min_tag.merge_request.id
-                      <> " - "
-                      <> min_tag,
+
+                  html.Fragment([
+                    components.link_text(
+                      [attr.href(merge_request_url), attr.target("_blank")],
+                      merge_request_text,
                     ),
+                    min_tag_rendered,
                   ])
                 })
 
               html.div([attr.class("mb-4")], [
-                html.Text(first_merge_request_min_tag.ticket.key),
-                html.div([attr.class("ml-4")], mapped_merge_request),
+                html.div([attr.class("mb-2")], [
+                  components.link_text(
+                    [attr.href(ticket_url), attr.target("_blank")],
+                    first_merge_request_min_tag.ticket.key,
+                  ),
+                ]),
+                html.div(
+                  [
+                    attr.class("ml-8 grid gap-4"),
+                    attr.style("grid-template-columns: auto 1fr;"),
+                  ],
+                  mapped_merge_request,
+                ),
               ])
             })
 
-          html.div([], [
+          html.div([attr.class("flex flex-col gap-8")], [
             html.div([], [
-              html.p_text([], "Min versions:"),
-              ..mapped_repositories
+              components.h2_text(
+                [attr.class("mb-2")],
+                "Lowest versions of services",
+              ),
+              html.div(
+                [
+                  attr.class("grid gap-4"),
+                  attr.style("grid-template-columns: auto 1fr;"),
+                ],
+                mapped_repositories,
+              ),
             ]),
-            html.hr([]),
-            html.div([], [html.p_text([], "Detail:"), ..mapped_detail]),
+            html.div([], [
+              components.h2_text([attr.class("mb-2")], "Detail"),
+              ..mapped_detail
+            ]),
           ])
         }
       }
@@ -287,21 +355,21 @@ fn get_content(logged_in: Bool) {
             "Log out",
           ),
         ]),
-        html.div([attr.id("form-or-result"), attr.class("mt-4")], [
+        html.div([attr.class("mt-4")], [
           html.form(
             [
               attr.Attr("hx-post", "/resolve-tags-for-issues"),
-              attr.Attr("hx-target", "#form-or-result"),
+              attr.Attr("hx-target", "#result"),
               attr.Attr("hx-ext", "json-enc"),
             ],
             [
               html.div([attr.class("flex min-h-80")], [
                 components.textarea(
                   [
-                    attr.class("grow"),
+                    attr.class("grow resize-none"),
                     attr.name("tasks"),
                     attr.placeholder(
-                      "Jira issue urls. Put each issue on separate line",
+                      "Jira issue urls (epics, tasks, sub-tasks, ...). Put each issue on separate line",
                     ),
                   ],
                   [],
@@ -313,6 +381,7 @@ fn get_content(logged_in: Bool) {
             ],
           ),
         ]),
+        html.div([attr.id("result"), attr.class("mt-4")], []),
       ])
   }
 }
