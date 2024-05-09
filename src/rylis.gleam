@@ -3,8 +3,8 @@ import gleam/result
 import glenvy/dotenv
 import glenvy/env
 import mist
+import rylis/router
 import rylis/web
-import rylis/web/router
 import wisp
 
 pub fn main() {
