@@ -40,7 +40,7 @@ pub fn save_auth(req: wisp.Request, res: wisp.Response, auth: Auth) {
     name: auth_cookie_name,
     value: cookie_value,
     // 90 days
-    max_age: 60 * 24 * 90,
+    max_age: 60 * 60 * 24 * 90,
     request: req,
     response: res,
     security: wisp.Signed,
