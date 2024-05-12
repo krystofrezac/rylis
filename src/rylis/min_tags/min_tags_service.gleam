@@ -7,17 +7,8 @@ import gleam/otp/task
 import gleam/regex
 import gleam/result
 import rylis/external
-
-pub type MergeRequestMinTag =
-  external.MergeRequestState(Result(SemanticVersion, Nil), Nil, Nil)
-
-pub type MergeRequestWithTicketData(data) {
-  MergeRequestWithTicketData(
-    ticket: external.TicketWithId,
-    merge_request: external.MergeRequest,
-    data: data,
-  )
-}
+import rylis/external/gitlab
+import rylis/external/jira
 
 pub type SemanticVersion {
   SemanticVersion(major: Int, minor: Int, patch: Int)
@@ -27,17 +18,24 @@ pub type RepositoryData(data) {
   RepositoryData(base_url: String, project: String, data: data)
 }
 
+pub type GetTagsWhereCommitPresent {
+  GetTagsWhereCommitPresent(sha: String, base_url: String, project: String)
+}
+
 pub fn get_merge_requests_min_tags_for_tickets(
   ticket_urls ticket_urls: List(String),
-  get_sub_tickets get_sub_tickets: fn(external.Ticket) ->
-    Result(List(external.TicketWithId), String),
-  get_ticket_merge_requests get_ticket_merge_requests: fn(external.TicketWithId) ->
-    Result(List(external.MergeRequest), String),
-  get_tags_where_merge_request get_tags_where_merge_request: fn(
-    external.MergeRequest,
+  get_sub_tickets get_sub_tickets: fn(jira.Ticket) -> jira.SubTicketsResult,
+  get_ticket_merge_requests get_ticket_merge_requests: fn(jira.TicketWithId) ->
+    jira.TicketMergeRequestsResult,
+  get_merge_request_merge_sha get_merge_request_merge_sha: fn(
+    gitlab.MergeRequest,
   ) ->
-    Result(external.MergeRequestState(List(String), Nil, Nil), String),
-) -> Result(List(MergeRequestWithTicketData(MergeRequestMinTag)), String) {
+    gitlab.MergeRequestMergeShaResult,
+  get_tags_where_commit_present get_tags_where_commit_present: fn(
+    GetTagsWhereCommitPresent,
+  ) ->
+    gitlab.MergeRequestMergeShaResult,
+) {
   use tickets <- result.try(
     ticket_urls
     |> list.map(fn(ticket_url) {
