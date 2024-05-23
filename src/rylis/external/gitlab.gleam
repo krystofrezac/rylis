@@ -20,9 +20,9 @@ pub type MergeRequest {
 }
 
 pub type MergeRequestMergeSha {
-  MergeRequestMerged(String)
-  MergeRequestOpened
-  MergeRequestClosed
+  MergedMergeRequestMergeSha(String)
+  OpenedMergeRequestMergeSha
+  ClosedMergeRequestMergeSha
 }
 
 pub type MergeRequestMergeShaResult =
@@ -105,7 +105,7 @@ pub fn get_merge_request_merge_sha(
 
   case state {
     "opened" ->
-      MergeRequestOpened
+      OpenedMergeRequestMergeSha
       |> Ok
     "merged" -> {
       let sha_decoder =
@@ -116,11 +116,11 @@ pub fn get_merge_request_merge_sha(
         ])
 
       json.decode(from: res.body, using: sha_decoder)
-      |> result.map(MergeRequestMerged)
+      |> result.map(MergedMergeRequestMergeSha)
       |> result.replace_error(InvalidResponseError)
     }
     _ ->
-      MergeRequestClosed
+      ClosedMergeRequestMergeSha
       |> Ok
   }
 }

@@ -11,6 +11,7 @@ import gleam/result
 import rylis/pagination
 
 pub type Error {
+  /// Not found or unauthorized
   NotFoundError
   InvalidResponseError
 }
@@ -49,6 +50,7 @@ fn get_id_and_sub_ids_page(
   token token: String,
 ) -> Result(pagination.PaginatedResponse(TicketWithId), Error) {
   let url = ticket.base_url <> "/rest/api/3/search"
+  // 100 is max that Jira can handle
   let page_size = 100
 
   use req_base <- result.try(
@@ -72,7 +74,10 @@ fn get_id_and_sub_ids_page(
   )
 
   use <- bool.guard(when: res.status == 404, return: Error(NotFoundError))
-  use <- bool.guard(when: res.status != 200, return: Error(InvalidResponseError))
+  use <- bool.guard(
+    when: res.status != 200,
+    return: Error(InvalidResponseError),
+  )
 
   let decoder =
     dynamic.decode2(
@@ -100,7 +105,6 @@ fn get_id_and_sub_ids_page(
   pagination.PaginatedResponse(data: ticket_ids, total_pages: total_pages)
 }
 
-/// 100 is max that Jira can handle
 pub fn get_ticket_merge_requests(
   ticket ticket: TicketWithId,
   email email: String,
@@ -124,7 +128,10 @@ pub fn get_ticket_merge_requests(
   )
 
   use <- bool.guard(when: res.status == 404, return: Error(NotFoundError))
-  use <- bool.guard(when: res.status != 200, return: Error(InvalidResponseError))
+  use <- bool.guard(
+    when: res.status != 200,
+    return: Error(InvalidResponseError),
+  )
 
   let decoder =
     dynamic.field(
@@ -141,44 +148,10 @@ pub fn get_ticket_merge_requests(
   )
 
   decoded_merge_request_urls
-  |> keep_some
+  |> option.values
   |> list.flatten
   |> Ok
 }
-
-// TODO: move
-// pub fn parse_merge_request_from_url(url: String) {
-//   let regex_options = regex.Options(case_insensitive: True, multi_line: False)
-//   let assert Ok(base_url_regex) = regex.compile("^.*\\.[^\\/]*", regex_options)
-//   let assert Ok(project_regex) =
-//     regex.compile("(?<=[^:\\/]\\/).*(?=\\/-)", regex_options)
-//   let assert Ok(id_regex) =
-//     regex.compile("(?<=merge_requests\\/).*$", regex_options)
-
-//   use regex.Match(content: base_url, ..) <- result.try(
-//     regex.scan(content: url, with: base_url_regex)
-//     |> list.first
-//     |> result.replace_error(
-//       "Failed to decode base url from merge request url: " <> url,
-//     ),
-//   )
-//   use regex.Match(content: project, ..) <- result.try(
-//     regex.scan(content: url, with: project_regex)
-//     |> list.first
-//     |> result.replace_error(
-//       "Failed to decode project from merge request url: " <> url,
-//     ),
-//   )
-//   use regex.Match(content: id, ..) <- result.map(
-//     regex.scan(content: url, with: id_regex)
-//     |> list.first
-//     |> result.replace_error(
-//       "Failed to decode id from merge request url: " <> url,
-//     ),
-//   )
-
-//   external.MergeRequest(base_url: base_url, project: project, id: id)
-// }
 
 fn get_auth(email email: String, token token: String) {
   let encoded_token =
@@ -187,12 +160,4 @@ fn get_auth(email email: String, token token: String) {
     |> bit_array.base64_encode(False)
 
   "Basic " <> encoded_token
-}
-
-fn keep_some(data: List(option.Option(data))) -> List(data) {
-  case data {
-    [] -> []
-    [option.Some(item), ..rest] -> [item, ..keep_some(rest)]
-    [option.None, ..rest] -> keep_some(rest)
-  }
 }
