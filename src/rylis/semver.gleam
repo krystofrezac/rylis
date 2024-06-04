@@ -6,7 +6,7 @@ import gleam/regex
 import gleam/result
 
 pub type Semver {
-  SemanticVersion(major: Int, minor: Int, patch: Int)
+  Semver(major: Int, minor: Int, patch: Int)
 }
 
 pub fn get_lowest(versions: List(Semver)) {
@@ -43,36 +43,29 @@ pub fn get_highest(versions: List(Semver)) {
 
 pub fn compare(a: Semver, b: Semver) {
   case a, b {
-    SemanticVersion(a_major, ..), SemanticVersion(b_major, ..)
-      if a_major < b_major
-    -> {
+    Semver(a_major, ..), Semver(b_major, ..) if a_major < b_major -> {
       order.Lt
     }
-    SemanticVersion(a_major, ..), SemanticVersion(b_major, ..) if a_major
-      > b_major -> {
+    Semver(a_major, ..), Semver(b_major, ..) if a_major > b_major -> {
       order.Gt
     }
-    SemanticVersion(minor: a_minor, ..), SemanticVersion(minor: b_minor, ..) if a_minor
-      < b_minor -> {
+    Semver(minor: a_minor, ..), Semver(minor: b_minor, ..) if a_minor < b_minor -> {
       order.Lt
     }
-    SemanticVersion(minor: a_minor, ..), SemanticVersion(minor: b_minor, ..) if a_minor
-      > b_minor -> {
+    Semver(minor: a_minor, ..), Semver(minor: b_minor, ..) if a_minor > b_minor -> {
       order.Gt
     }
-    SemanticVersion(patch: a_patch, ..), SemanticVersion(patch: b_patch, ..) if a_patch
-      < b_patch -> {
+    Semver(patch: a_patch, ..), Semver(patch: b_patch, ..) if a_patch < b_patch -> {
       order.Lt
     }
-    SemanticVersion(patch: a_patch, ..), SemanticVersion(patch: b_patch, ..) if a_patch
-      > b_patch -> {
+    Semver(patch: a_patch, ..), Semver(patch: b_patch, ..) if a_patch > b_patch -> {
       order.Gt
     }
     _, _ -> order.Eq
   }
 }
 
-pub fn decode(value: String) {
+pub fn parse(value: String) {
   let assert Ok(semantic_regex) =
     regex.compile(
       "^(\\d+)\\.(\\d+)\\.(\\d+)$",
@@ -91,9 +84,17 @@ pub fn decode(value: String) {
       let assert Ok(minor_int) = int.parse(minor)
       let assert Ok(patch_int) = int.parse(patch)
 
-      SemanticVersion(major: major_int, minor: minor_int, patch: patch_int)
+      Semver(major: major_int, minor: minor_int, patch: patch_int)
       |> Ok
     }
     _ -> Error(Nil)
   }
+}
+
+pub fn format(value: Semver) {
+  int.to_string(value.major)
+  <> "."
+  <> int.to_string(value.minor)
+  <> "."
+  <> int.to_string(value.patch)
 }

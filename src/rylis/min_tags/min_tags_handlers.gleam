@@ -1,5 +1,4 @@
 import gleam/dynamic
-import gleam/io
 import gleam/list
 import gleam/result
 import gleam/string
@@ -7,6 +6,7 @@ import nakai
 import rylis/external/gitlab
 import rylis/external/jira
 import rylis/helpers
+import rylis/min_tags/lowest_tags_service
 import rylis/min_tags/min_tags_templates
 import rylis/min_tags/tags_resolver_service
 import rylis/web
@@ -121,20 +121,14 @@ pub fn resolve_tags_for_tickets_handler(req: wisp.Request) {
           },
         )
 
-      io.debug(resolve_result)
+      let lowest_tags_by_repository =
+        lowest_tags_service.get_lowest_by_repository(resolve_result)
 
-      // let content = case merge_requests_min_tags_result {
-      //   Error(err) -> min_tags_templates.render_resolve_errors(err)
-      //   Ok(merge_requests_min_tags) -> {
-      //     let repositories_min_tags =
-      //       min_tags_service.get_min_tags_by_repository(merge_requests_min_tags)
-      //     min_tags_templates.render_resolve_result(
-      //       merge_requests_min_tags,
-      //       repositories_min_tags,
-      //     )
-      //   }
-      // }
-      let content = min_tags_templates.render_min_tags_result(resolve_result)
+      let content =
+        min_tags_templates.render_min_tags_result(
+          resolve_result,
+          lowest_tags_by_repository,
+        )
       let html = nakai.to_string_builder(content)
 
       wisp.ok()

@@ -4,6 +4,7 @@ import gleam/regex
 import gleam/result
 import rylis/external/gitlab
 import rylis/external/jira
+import rylis/semver
 
 // PARAMS
 
@@ -29,18 +30,15 @@ pub type GetTagsWhereCommitPresent =
 
 // RETURN
 
-pub type Tag {
-  Tag(name: String)
-}
-
 pub type MergeShaError {
   MergeShaNotFoundError
   MergeShaUnathorizedError
   MergeShaGitlabError
+  MergeShaNoSemverTagError
 }
 
 pub type MergeSha {
-  MergeSha(sha: String, result: Result(List(Tag), MergeShaError))
+  MergeSha(sha: String, lowest_tag: Result(semver.Semver, MergeShaError))
 }
 
 pub type ParsedMergeRequestError {
@@ -107,7 +105,6 @@ pub type TicketUrl {
 pub type ResolveResult =
   List(TicketUrl)
 
-/// 1 minute
 const task_timeout = 60_000
 
 pub fn resolve(
@@ -274,7 +271,7 @@ fn get_parsed_merge_request_result(
     gitlab.MergedMergeRequestMergeSha(sha) -> {
       MergeSha(
         sha: sha,
-        result: get_merge_sha_result(
+        lowest_tag: get_merge_sha_lowest_tag(
           merge_request,
           sha,
           get_tags_where_commit_present,
@@ -285,11 +282,11 @@ fn get_parsed_merge_request_result(
   }
 }
 
-fn get_merge_sha_result(
+fn get_merge_sha_lowest_tag(
   merge_request: gitlab.MergeRequest,
   sha: String,
   get_tags_where_commit_present: GetTagsWhereCommitPresent,
-) -> Result(List(Tag), MergeShaError) {
+) -> Result(semver.Semver, MergeShaError) {
   use tags <- result.try(
     get_tags_where_commit_present(GetTagsWhereCommitPresentParams(
       sha: sha,
@@ -306,11 +303,11 @@ fn get_merge_sha_result(
   )
 
   tags
-  |> list.map(Tag)
-  |> Ok
+  |> list.filter_map(semver.parse)
+  |> semver.get_lowest
+  |> result.replace_error(MergeShaNoSemverTagError)
 }
 
-// TODO: maybe move to jira module
 pub fn ticket_url_to_ticket(url: String) -> Result(jira.Ticket, Nil) {
   let assert Ok(base_url_regex) =
     regex.compile(
@@ -337,7 +334,9 @@ pub fn ticket_url_to_ticket(url: String) -> Result(jira.Ticket, Nil) {
   jira.Ticket(base_url: base_url, key: key)
 }
 
-fn parse_merge_request_from_url(url: String) -> Result(gitlab.MergeRequest, Nil) {
+pub fn parse_merge_request_from_url(
+  url: String,
+) -> Result(gitlab.MergeRequest, Nil) {
   let regex_options = regex.Options(case_insensitive: True, multi_line: False)
   let assert Ok(base_url_regex) = regex.compile("^.*\\.[^\\/]*", regex_options)
   let assert Ok(project_regex) =

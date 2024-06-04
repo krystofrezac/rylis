@@ -31,37 +31,6 @@ pub type MergeRequestMergeShaResult =
 pub type TagsWhereCommitPresentResult =
   Result(List(String), Error)
 
-// TODO: Remove
-// pub fn get_tags_where_merge_request(
-//   merge_request merge_request: MergeRequest,
-//   token token: String,
-// ) -> Result(external.MergeRequestState(List(String), Nil, Nil), String) {
-//   use maybe_sha <- result.try(get_merge_request_merge_sha(merge_request, token))
-
-//   case maybe_sha {
-//     external.MergeRequestMerged(sha) -> {
-//       use tags <- result.try(get_tags_where_commit_present(
-//         sha: sha,
-//         base_url: merge_request.base_url,
-//         project: merge_request.project,
-//         token: token,
-//       ))
-//       tags
-//       |> external.MergeRequestMerged
-//       |> Ok
-//     }
-//     external.MergeRequestOpened(Nil) ->
-//       Nil
-//       |> external.MergeRequestOpened
-//       |> Ok
-//     external.MergeRequestClosed(Nil) ->
-//       Nil
-//       |> external.MergeRequestClosed
-//       |> Ok
-//   }
-// }
-
-/// Returns list of tags where the changes from MR are present
 pub fn get_merge_request_merge_sha(
   merge_request merge_request: MergeRequest,
   token token: String,

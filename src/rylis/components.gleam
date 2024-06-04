@@ -53,11 +53,24 @@ pub fn button_text(attrs, text) {
   button(attrs, [html.Text(text)])
 }
 
-pub fn error_alert(title, content) {
-  html.div([attr.class("rounded-md bg-red-100 p-4")], [
+pub fn error_alert(title) {
+  html.div([attr.class("rounded-md bg-red-100 px-4 py-2")], [
     html.p_text([attr.class("font-bold text-red-800")], title),
-    html.p_text([attr.class("mt-2 text-red-700")], content),
   ])
+}
+
+pub fn error_alert_fit(title) {
+  html.div([attr.class("w-fit")], [error_alert(title)])
+}
+
+pub fn warning_alert(title) {
+  html.div([attr.class("rounded-md bg-orange-100 px-4 py-2")], [
+    html.p_text([attr.class("font-bold text-orange-800")], title),
+  ])
+}
+
+pub fn warning_alert_fit(title) {
+  html.div([attr.class("w-fit")], [warning_alert(title)])
 }
 
 pub fn textarea(attrs, children) {
