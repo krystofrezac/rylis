@@ -7,43 +7,34 @@ import gleam/json
 import gleam/list
 import gleam/result
 import gleam/uri
-import rylis/external
 import rylis/pagination
 
-/// Returns list of tags where the changes from MR are present
-pub fn get_tags_where_merge_request(
-  merge_request merge_request: external.MergeRequest,
-  token token: String,
-) -> Result(external.MergeRequestState(List(String), Nil, Nil), String) {
-  use maybe_sha <- result.try(get_merge_request_merge_sha(merge_request, token))
-
-  case maybe_sha {
-    external.MergeRequestMerged(sha) -> {
-      use tags <- result.try(get_tags_where_commit_present(
-        sha: sha,
-        base_url: merge_request.base_url,
-        project: merge_request.project,
-        token: token,
-      ))
-      tags
-      |> external.MergeRequestMerged
-      |> Ok
-    }
-    external.MergeRequestOpened(Nil) ->
-      Nil
-      |> external.MergeRequestOpened
-      |> Ok
-    external.MergeRequestClosed(Nil) ->
-      Nil
-      |> external.MergeRequestClosed
-      |> Ok
-  }
+pub type Error {
+  NotFoundError
+  UnathorizedError
+  InvalidResponseError
 }
 
-fn get_merge_request_merge_sha(
-  merge_request merge_request: external.MergeRequest,
+pub type MergeRequest {
+  MergeRequest(base_url: String, project: String, id: String)
+}
+
+pub type MergeRequestMergeSha {
+  MergedMergeRequestMergeSha(String)
+  OpenedMergeRequestMergeSha
+  ClosedMergeRequestMergeSha
+}
+
+pub type MergeRequestMergeShaResult =
+  Result(MergeRequestMergeSha, Error)
+
+pub type TagsWhereCommitPresentResult =
+  Result(List(String), Error)
+
+pub fn get_merge_request_merge_sha(
+  merge_request merge_request: MergeRequest,
   token token: String,
-) -> Result(external.MergeRequestState(String, Nil, Nil), String) {
+) -> MergeRequestMergeShaResult {
   use req <- result.try(
     {
       let encoded_project = uri.percent_encode(merge_request.project)
@@ -59,31 +50,31 @@ fn get_merge_request_merge_sha(
       req
       |> request.set_header("Authorization", get_authorization(token))
     }
-    |> result.replace_error(
-      "Failed to compose gitlab merge request url (something is wrong in Jira)",
-    ),
+    |> result.replace_error(NotFoundError),
   )
 
   use res <- result.try(
     req
     |> httpc.send
-    |> result.replace_error("httpc error when merge request"),
+    |> result.replace_error(InvalidResponseError),
   )
 
+  use <- bool.guard(when: res.status == 401, return: Error(UnathorizedError))
+  use <- bool.guard(when: res.status == 404, return: Error(NotFoundError))
   use <- bool.guard(
     when: res.status != 200,
-    return: Error("Gitlab merge request failed (check token)"),
+    return: Error(InvalidResponseError),
   )
 
   let state_decoder = dynamic.field("state", dynamic.string)
   use state <- result.try(
     json.decode(from: res.body, using: state_decoder)
-    |> result.replace_error("Failed to decode state from Gitlab merge request"),
+    |> result.replace_error(InvalidResponseError),
   )
 
   case state {
     "opened" ->
-      external.MergeRequestOpened(Nil)
+      OpenedMergeRequestMergeSha
       |> Ok
     "merged" -> {
       let sha_decoder =
@@ -94,21 +85,21 @@ fn get_merge_request_merge_sha(
         ])
 
       json.decode(from: res.body, using: sha_decoder)
-      |> result.map(external.MergeRequestMerged)
-      |> result.replace_error("Gitlab merge response validation failed")
+      |> result.map(MergedMergeRequestMergeSha)
+      |> result.replace_error(InvalidResponseError)
     }
     _ ->
-      external.MergeRequestClosed(Nil)
+      ClosedMergeRequestMergeSha
       |> Ok
   }
 }
 
-fn get_tags_where_commit_present(
+pub fn get_tags_where_commit_present(
   sha sha: String,
   base_url base_url: String,
   project project: String,
   token token: String,
-) -> Result(List(String), String) {
+) -> TagsWhereCommitPresentResult {
   pagination.get_all_pages(fn(page_number) {
     get_tags_where_commit_present_page(
       page_number: page_number,
@@ -126,7 +117,7 @@ fn get_tags_where_commit_present_page(
   base_url base_url: String,
   project project: String,
   token token: String,
-) {
+) -> Result(pagination.PaginatedResponse(String), Error) {
   use req <- result.try(
     {
       let encoded_project = uri.percent_encode(project)
@@ -148,38 +139,38 @@ fn get_tags_where_commit_present_page(
         #("page", int.to_string(page_number)),
       ])
     }
-    |> result.replace_error("Failed to compose gitlab ref url"),
+    |> result.replace_error(NotFoundError),
   )
 
   use res <- result.try(
     req
     |> httpc.send
-    |> result.replace_error("httpc error when gitlab refs"),
+    |> result.replace_error(InvalidResponseError),
   )
 
+  use <- bool.guard(when: res.status == 404, return: Error(NotFoundError))
+  use <- bool.guard(when: res.status == 401, return: Error(UnathorizedError))
   use <- bool.guard(
     when: res.status != 200,
-    return: Error("Gitlab refs request failed (check token)"),
+    return: Error(InvalidResponseError),
   )
 
   let decoder = dynamic.list(dynamic.field("name", dynamic.string))
   use decoded <- result.try(
     json.decode(from: res.body, using: decoder)
-    |> result.replace_error("Gitlab refs response validation failed"),
+    |> result.replace_error(InvalidResponseError),
   )
 
   use total_pages <- result.try({
     use total_pages_string <- result.try(
       res.headers
       |> list.key_find("x-total-pages")
-      |> result.replace_error(
-        "Gitlab refs response missing x-total-pages header",
-      ),
+      |> result.replace_error(InvalidResponseError),
     )
 
     total_pages_string
     |> int.parse()
-    |> result.replace_error("Gitlab refs response invalid x-total-pages header")
+    |> result.replace_error(InvalidResponseError)
   })
 
   pagination.PaginatedResponse(data: decoded, total_pages: total_pages)

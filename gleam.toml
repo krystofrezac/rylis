@@ -1,6 +1,6 @@
 name = "rylis"
 version = "1.0.0"
-gleam = ">= 0.32.0"
+gleam = ">= 1.2.1"
 
 [dependencies]
 gleam_stdlib = ">= 0.34.0 and < 2.0.0"
